@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTHONPATH": "${workspaceFolder}:${env:PYTHONPATH}",
+                "GOOGLE_APPLICATION_CREDENTIALS": "${workspaceFolder}/secrets/main-composite-287415-3546b4907141.json",
+            }
+        },
+        {
+            "name": "Python: Module",
+            "type": "python",
+            "request": "launch",
+            "module": "gcpfire"
+        }
+    ]
+}

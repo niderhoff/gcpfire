@@ -1,0 +1,23 @@
+{
+    "python.pythonPath": "/home/niid/.cache/pypoetry/virtualenvs/gcpfire-Gz-Jh9qd-py3.8/bin/python",
+    "terminal.integrated.env.linux": {
+        "PYTHONPATH": "${workspaceFolder}/.:${env:PYTHONPATH}",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "GOOGLE_APPLICATION_CREDENTIALS": "${workspaceFolder}/secrets/main-composite-287415-3546b4907141.json",
+    },
+    "python.linting.flake8Enabled": true,
+    "python.linting.enabled": true,
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    },
+    "python.formatting.provider": "black",
+    "python.testing.unittestEnabled": false,
+    "python.testing.nosetestsEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.envFile": "${workspaceFolder}/.env.dev",
+    "python.testing.pytestArgs": [
+        "-vv",
+        "test"
+    ]
+}
