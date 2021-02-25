@@ -1,10 +1,12 @@
 #!/bin/bash
-apt-get update
+#apt-get update
 #apt-get -y install 
 
-#IMAGE_URL=$(curl http://metadata/computeMetadata/v1/instance/attributes/url -H "Metadata-Flavor: Google")
-#TEXT=$(curl http://metadata/computeMetadata/v1/instance/attributes/text -H "Metadata-Flavor: Google")
-CS_BUCKET=$(curl http://metadata/computeMetadata/v1/instance/attributes/bucket -H "Metadata-Flavor: Google")
+#sudo /opt/deeplearning/install-driver.sh
+# should be done by GCP automatically
 
-echo "$CS_BUCKET"
-exit 0
+#IMAGE_URL=$(curl http://metadata/computeMetadata/v1/instance/attributes/url -H "Metadata-Flavor: Google")
+DOCKER_IMAGE=$(curl http://metadata/computeMetadata/v1/instance/attributes/docker_image -H "Metadata-Flavor: Google")
+CS_BUCKET=$(curl http://metadata/computeMetadata/v1/instance/attributes/bucket -H "Metadata-Flavor: Google")
+docker pull "$DOCKER_IMAGE"
+time docker run -it liimba/aio:latest "$CS_BUCKET"

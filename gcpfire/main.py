@@ -34,7 +34,7 @@ def list_instances(compute, project, zone):
     return result["items"] if "items" in result else None
 
 
-def create_instance(compute, project, zone, name, bucket):
+def create_instance(compute, project, zone, name, additional_meta):
     """create instance with <name> and access to a certain gs <bucket>"""
     # Get the latest image
     image_response = (
@@ -47,7 +47,7 @@ def create_instance(compute, project, zone, name, bucket):
     source_disk_image = image_response["selfLink"]
 
     # Configure the Machine
-    machine_type = "zones/%s/machineTypes/n1-standard-1" % zone
+    machine_type = "zones/%s/machineTypes/n1-standard-4" % zone
     accelerator_type = "projects/%s/zones/%s/acceleratorTypes/nvidia-tesla-t4" % (
         project,
         zone,
@@ -64,7 +64,7 @@ def create_instance(compute, project, zone, name, bucket):
         "disks": [
             {
                 "boot": True,
-                "autoDelete": True,  # TODO: vs persistent disk?
+                "autoDelete": True,  # TODO: boot disk size?
                 "initializeParams": {"sourceImage": source_disk_image},
             }
         ],
@@ -92,6 +92,7 @@ def create_instance(compute, project, zone, name, bucket):
         # configuration from deployment scripts to instance
         "metadata": {
             "items": [
+                {"key": "install-nvidia-driver", "value": True},
                 {
                     # Startup script is automatically executed by the
                     # instance upon startup.
@@ -99,8 +100,7 @@ def create_instance(compute, project, zone, name, bucket):
                     "value": startup_script,
                 },
                 # {"key": "url", "value": image_url},
-                # {"key": "text", "value": image_caption},
-                {"key": "bucket", "value": bucket},
+                *additional_meta,
             ]
         },
     }
@@ -114,7 +114,7 @@ def delete_instance(compute, project, zone, name):
 
 
 def wait_for_operation(compute, project, zone, operation):
-    print("Waiting for operation to finish...")
+    logger.info("Waiting for operation to finish...")
     while True:
         result = (
             compute.zoneOperations()
@@ -123,7 +123,7 @@ def wait_for_operation(compute, project, zone, operation):
         )
 
         if result["status"] == "DONE":
-            print("done.")
+            logger.info("done.")
             if "error" in result:
                 raise Exception(result["error"])
             return result
@@ -133,10 +133,17 @@ def wait_for_operation(compute, project, zone, operation):
 
 def main(project, bucket, zone, instance_name, wait=True):
 
+    video_name = "123test"
+    additional_meta = [
+        {"key": "docker_image", "value": f"gcr.io/{PROJECT_ID}/aio:latest"},
+        {"key": "bucket", "value": bucket},
+        {"key": "video_name", "value": video_name},
+    ]
+
     logger.info("Creating Client.")
     compute = get_client(PROJECT_ID, ZONE)
     logger.info("Creating Instance.")
-    operation = create_instance(compute, project, zone, instance_name, bucket)
+    operation = create_instance(compute, project, zone, instance_name, additional_meta)
     wait_for_operation(compute, project, zone, operation["name"])
     instances = list_instances(compute, PROJECT_ID, ZONE)
     logger.info("Instances in project %s and zone %s:" % (project, zone))
