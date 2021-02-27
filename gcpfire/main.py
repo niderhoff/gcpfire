@@ -5,27 +5,30 @@ import time
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-PROJECT_ID = "main-composite-287415"
-ZONE = "us-east1-c"
 SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
 loglevel = logging.DEBUG  # logging.INFO
-logging.basicConfig(
-    format="%(asctime)s %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-)
+logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger(__name__)
 logger.setLevel(loglevel)
 logger.debug("Logger initialized.")
-logger.debug(f"Starting gcpfire with Project ID: {PROJECT_ID}, Zone: {ZONE}")
 
 
-def get_client(project, zone):
-    logger.debug("Building client.")
-
-    credentials = service_account.Credentials.from_service_account_file(
+def get_credentials():
+    return service_account.Credentials.from_service_account_file(
         SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/compute"]
     )
 
+
+def get_logging_client(project, zone):
+    logger.debug("Building Logging Client.")
+    credentials = get_credentials()
+    return build("logging", "v2", credentials=credentials, cache_discovery=False)
+
+
+def get_compute_client(project, zone):
+    logger.debug("Building Compute Client.")
+    credentials = get_credentials()
     return build("compute", "v1", credentials=credentials, cache_discovery=False)
 
 
@@ -34,37 +37,58 @@ def list_instances(compute, project, zone):
     return result["items"] if "items" in result else None
 
 
-def create_instance(compute, project, zone, name, additional_meta):
-    """create instance with <name> and access to a certain gs <bucket>"""
+def get_image_link(compute, project, family):
     # Get the latest image
-    image_response = (
-        compute.images()
-        .getFromFamily(
-            project="deeplearning-platform-release", family="tf2-ent-latest-gpu"
+    logger.debug(f"Getting image {family} from project {project}")
+    image_response = compute.images().getFromFamily(project=project, family=family).execute()
+    logger.debug(f"Got {image_response['selfLink']}")
+    return image_response["selfLink"]
+
+
+def create_instance(
+    compute,
+    project,
+    zone,
+    name,
+    script_path,
+    additional_meta,
+    machine_type="n1-standard-4",
+    preemptible=True,
+    gpus={},
+):
+    """create instance with <name> and access to a certain gs <bucket>"""
+    logger.debug(
+        (
+            f"Creating Instance {name} with machine_type={machine_type}, preemptible={preemptible}, "
+            f"gpus={gpus}, script={script_path}, metadata={additional_meta}"
         )
-        .execute()
     )
-    source_disk_image = image_response["selfLink"]
+    source_disk_image = get_image_link(compute, project, "liimba-tesla")
 
     # Configure the Machine
-    machine_type = "zones/%s/machineTypes/n1-standard-4" % zone
-    accelerator_type = "projects/%s/zones/%s/acceleratorTypes/nvidia-tesla-t4" % (
-        project,
-        zone,
-    )
-    startup_script = open(
-        os.path.join(os.path.dirname(__file__), "startup_script.sh"), "r"
-    ).read()
+    machine_type = "zones/%s/machineTypes/%s" % (zone, machine_type)
+
+    # Configure the Accelerators
+    guest_accelerators = []
+    if len(gpus) > 0:
+        for label, count in gpus.items():
+            accelerator_type = "projects/%s/zones/%s/acceleratorTypes/%s" % (
+                project,
+                zone,
+                label,
+            )
+            guest_accelerators.append({"acceleratorCount": count, "acceleratorType": accelerator_type})
+
+    startup_script = open(script_path, "r").read()
     config = {
         "name": name,
         "machineType": machine_type,
-        "preemptible": True,
-        "scheduling": {"onHostMaintenance": "TERMINATE", "automaticRestart": False},
+        "scheduling": {"preemptible": preemptible, "onHostMaintenance": "TERMINATE", "automaticRestart": False},
         # Specfiy the boot disk and the image to use asa source
         "disks": [
             {
                 "boot": True,
-                "autoDelete": True,  # TODO: boot disk size?
+                "autoDelete": True,  # TODO: boot disk 50gb kann man reducen?
                 "initializeParams": {"sourceImage": source_disk_image},
             }
         ],
@@ -75,9 +99,8 @@ def create_instance(compute, project, zone, name, additional_meta):
                 "accessConfigs": [{"type": "ONE_TO_ONE_NAT", "name": "External NAT"}],
             }
         ],
-        "guestAccelerators": [
-            {"acceleratorCount": 1, "acceleratorType": accelerator_type}
-        ],
+        # Accelerators (GPU/TPU)
+        "guestAccelerators": guest_accelerators,
         # Allow Instance to access cloud storage and logging
         "serviceAccounts": [
             {
@@ -92,14 +115,17 @@ def create_instance(compute, project, zone, name, additional_meta):
         # configuration from deployment scripts to instance
         "metadata": {
             "items": [
-                {"key": "install-nvidia-driver", "value": True},
+                # Automatically install the driver after start-up
+                # (not needed for us since we have it already installed in the disk image)
+                # {"key": "install-nvidia-driver", "value": True},
                 {
                     # Startup script is automatically executed by the
                     # instance upon startup.
                     "key": "startup-script",
                     "value": startup_script,
                 },
-                # {"key": "url", "value": image_url},
+                {"key": "serial-port-enable", "value": True},
+                # {"key": "url", "value": some_variable},
                 *additional_meta,
             ]
         },
@@ -108,19 +134,14 @@ def create_instance(compute, project, zone, name, additional_meta):
 
 
 def delete_instance(compute, project, zone, name):
-    return (
-        compute.instances().delete(project=project, zone=zone, instance=name).execute()
-    )
+    logger.info(f"Deleting Instance {name}")
+    return compute.instances().delete(project=project, zone=zone, instance=name).execute()
 
 
 def wait_for_operation(compute, project, zone, operation):
     logger.info("Waiting for operation to finish...")
     while True:
-        result = (
-            compute.zoneOperations()
-            .get(project=project, zone=zone, operation=operation)
-            .execute()
-        )
+        result = compute.zoneOperations().get(project=project, zone=zone, operation=operation).execute()
 
         if result["status"] == "DONE":
             logger.info("done.")
@@ -131,31 +152,93 @@ def wait_for_operation(compute, project, zone, operation):
         time.sleep(1)
 
 
-def main(project, bucket, zone, instance_name, wait=True):
+def wait_for_status(compute, project, zone, instance_id):
+    """https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry"""
+    """https://cloud.google.com/logging/docs/view/advanced-queries"""
+    logs = get_logging_client(project, zone)
+    logger.debug("Waiting for startup script exit status...")
+    body = {
+        "projectIds": [project],
+        "resourceNames": [],
+        "filter": f'resource.type="gce_instance" AND resource.labels.instance_id="{instance_id}"',
+        "serviceAccounts": [
+            {
+                "email": "default",
+                "scopes": [
+                    "https://www.googleapis.com/auth/logging.logEntries.list",
+                    "https://www.googleapis.com/auth/logging.privateLogEntries.list",
+                    "https://www.googleapis.com/auth/logging.views.access",
+                ],
+            }
+        ],
+    }
+    # entries = logs.entries().list(body=body).execute()
+    print(0)
+    print(1)
 
-    video_name = "123test"
-    additional_meta = [
-        {"key": "docker_image", "value": f"gcr.io/{PROJECT_ID}/aio:latest"},
-        {"key": "bucket", "value": bucket},
-        {"key": "video_name", "value": video_name},
-    ]
 
+def fire(project, zone, instance_name, script_path, additional_meta, wait=True):
     logger.info("Creating Client.")
-    compute = get_client(PROJECT_ID, ZONE)
-    logger.info("Creating Instance.")
-    operation = create_instance(compute, project, zone, instance_name, additional_meta)
+    compute = get_compute_client(project, zone)
+
+    logger.info(f"Creating Instance {instance_name}.")
+    operation = create_instance(
+        compute, project, zone, instance_name, script_path, additional_meta, gpus={"nvidia-tesla-t4": 1}
+    )
     wait_for_operation(compute, project, zone, operation["name"])
-    instances = list_instances(compute, PROJECT_ID, ZONE)
-    logger.info("Instances in project %s and zone %s:" % (project, zone))
-    for instance in instances:
-        logger.info(" - " + instance["name"])
-    logger.info("Instance created.")
+
+    instances = list_instances(compute, project, zone)
+    if instances is not None:
+        logger.info("Instances in project %s and zone %s:" % (project, zone))
+        for instance in instances:
+            logger.info(" - " + instance["name"])
+
+    our_instance = list(filter(lambda x: x["name"] == instance_name, instances))
+
+    if len(our_instance) == 1:
+        logger.info("Instance created.")  # TODO: check our instance is actually here
+        instance_id = our_instance[0]["id"]
+    elif len(our_instance) > 1:  # TODO: this can DEFINITELY break when we parallelize
+        raise "ERROR WE HAVE TWO INSTANCES???"
+    else:
+        logger.error("Instace was not created.")
+
+    wait_for_status(compute, project, zone, instance_id)
+
     if wait:
-        input("Delete instance?")
-    logger.info("Deleting Instance.")
+        input("DELETE instance?")
     operation = delete_instance(compute, project, zone, instance_name)
     wait_for_operation(compute, project, zone, operation["name"])
 
 
+def main():
+    PROJECT_ID = "main-composite-287415"
+    ZONE = "us-east1-c"
+    logger.debug(f"Starting gcpfire with Project ID: {PROJECT_ID}, Zone: {ZONE}")
+
+    input_uri = "gs://dev-video-input/test/10_Hegenberger_vs_Ehret/10_Hegenberger_vs_Ehret/10_Hegenberger_vs_Ehret.mp4"
+    output_uri = "gs://dev-video-exported/test/10_Hegenberger_vs_Ehret/10_Hegenberger_vs_Ehret.mp4"
+
+    instance_name = f"analysis{str(time.time()).split('.')[0]}"
+    analysis_script_path = os.path.join(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)),
+        "jobs",
+        "analysis.sh",
+    )
+    additional_meta = [
+        {"key": "project_id", "value": PROJECT_ID},
+        {
+            "key": "input_uri",
+            "value": input_uri,
+        },
+        {
+            "key": "output_uri",
+            "value": output_uri,
+        },
+    ]
+
+    fire(PROJECT_ID, ZONE, instance_name, analysis_script_path, additional_meta)
+
+
 if __name__ == "__main__":
-    main(PROJECT_ID, "test_bucket", ZONE, f"test1{str(time.time()).split('.')[0]}")
+    main()
