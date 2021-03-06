@@ -56,4 +56,5 @@ def invoke_line(cmd):
 def remove_host(ip):
     cmd = ["ssh-keygen", "-f", "~/.ssh/known_hosts", "-R", "%s" % ip]
     logger.debug(f"Running command: {cmd}")
-    invoke_line(cmd)
+    # we don't care about the result here
+    subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

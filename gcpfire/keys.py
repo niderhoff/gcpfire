@@ -8,8 +8,11 @@ from cryptography.hazmat.primitives import \
     serialization as crypto_serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+from gcpfire.logger import logger
+
 
 def generate_keypair(add_username="gcpfire"):
+    logger.debug("Generating key pair.")
     key = rsa.generate_private_key(backend=crypto_default_backend(), public_exponent=65537, key_size=2048)
     private_key = key.private_bytes(
         crypto_serialization.Encoding.PEM,
@@ -39,6 +42,7 @@ def write_privatekey(key, name=None, outpath=os.getcwd()):
     return pkey_name
 
 
-def delete_key(file_path):
+def delete_local_key(file_path):
+    logger.debug("Deleting local key file.")
     if os.path.exists(file_path):
         os.remove(file_path)
