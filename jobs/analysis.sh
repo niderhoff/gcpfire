@@ -5,7 +5,6 @@ mkdir -p /tmp/cache
 mkdir -p /tmp/output
 docker pull gcr.io/"$PROJECT_ID"/analysis:latest
 time docker run \
-    -it \
     --name analysis \
     --mount type=bind,source="$(pwd)"/tmp/cache,target=/cache \
     --mount type=bind,source="$(pwd)"/tmp/output,target=/output \
