@@ -197,6 +197,51 @@ def add_ssh_keys(compute, project, zone, instance_name):
         raise InstanceNotExistsError
 
 
+class InstanceNotExistsError(Exception):
+    """requested instance does not exist according to api!"""
+
+    pass
+
+
+def add_ssh_keys(compute, project, zone, instance_name):
+    logger.debug(f"Getting instance {instance_name} data.")
+    request_instance_get = compute.instances().get(project=project, zone=zone, instance=instance_name).execute()
+
+    if request_instance_get is not None:
+        logger.debug("Instance metadata:\n" + str(request_instance_get["metadata"]))
+
+        keys = []
+        other_items = []
+        fingerprint = request_instance_get["metadata"]["fingerprint"]
+        for meta_item in request_instance_get["metadata"]["items"]:
+            if meta_item["key"] == "ssh-keys":
+                keys.extend(meta_item["value"].split("\n"))
+            else:
+                other_items.append(meta_item)
+
+        logger.info("Generating keypair.")
+        priv, pub = generate_keypair()
+        private_key_file = write_privatekey(priv, instance_name, outpath=os.path.join(os.getcwd(), "secrets"))
+        logger.info(f"Private key file available at: {private_key_file}")
+
+        keys.append("gcpfire:" + pub)
+
+        body = {"items": [{"key": "ssh-keys", "value": "\n".join(keys)}, *other_items], "fingerprint": fingerprint}
+
+        logger.info("Adding public key to Instance (user:gcpfire)...")
+        request_instance_setMetadata = (
+            compute.instances().setMetadata(project=project, zone=zone, instance=instance_name, body=body).execute()
+        )
+        wait_for_response(compute, project, zone, request_instance_setMetadata["name"])
+
+        external_ip = request_instance_get["networkInterfaces"][0]["accessConfigs"][0]["natIP"]
+
+        return (private_key_file, external_ip)
+    else:
+        logger.error(f"Instance {instance_name} does not exist.")
+        raise InstanceNotExistsError
+
+
 def fire(project, zone, instance_name, script_path, additional_meta, wait=True):
     logger.info("Creating Client.")
     compute = get_compute_client(project, zone)
