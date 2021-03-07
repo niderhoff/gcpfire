@@ -2,11 +2,13 @@
 
 ## Next Steps
 
+- [ ] Make this a package
 - [ ] Docker Client on Container needs access to docker registry
 - [ ] PIPE SSH Key
 - [ ] Add Profiling
 - [ ] Run Multiple Jobs in Succession
 - [ ] Parallelize
+- [ ] Add Type hints
 
 ## Changelog
 
