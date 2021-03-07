@@ -2,10 +2,8 @@
 
 import os
 
-from cryptography.hazmat.backends import \
-    default_backend as crypto_default_backend
-from cryptography.hazmat.primitives import \
-    serialization as crypto_serialization
+from cryptography.hazmat.backends import default_backend as crypto_default_backend
+from cryptography.hazmat.primitives import serialization as crypto_serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from gcpfire.logger import logger
@@ -42,7 +40,7 @@ def write_privatekey(key, name=None, outpath=os.getcwd()):
     return pkey_name
 
 
-def delete_local_key(file_path):
+def delete_key_file(file_path):
     logger.debug("Deleting local key file.")
     if os.path.exists(file_path):
         os.remove(file_path)

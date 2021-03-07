@@ -3,12 +3,17 @@
 ## Next Steps
 
 - [ ] Docker Client on Container needs access to docker registry
-- [ ] Get Status Code from startup script command and delete instance automaticall if successful & if not successful (instead of manual wait=true)
-  - [ ] Read VM Logs
-  - [ ] Write Logs <https://cloud.google.com/logging/docs/setup/python>
-- [ ] propagate error code up
+- [ ] PIPE SSH Key
+- [ ] Add Profiling
 - [ ] Run Multiple Jobs in Succession
 - [ ] Parallelize
-- [ ] Caution: The interactive serial console does not support IP-based access restrictions such as IP allowlists. If you enable the interactive serial console on an instance, clients can attempt to connect to that instance from any IP address. Anybody can connect to that instance if they know the correct SSH key, username, project ID, zone, and instance name. Use firewall rules to control access to your network and specific ports.
+
+## Changelog
+
+### 0.1.0
+
+- [x] Disable Serial Port
 - [x] Custom Image incl. driver and all code to have better startup times
-- [x] split process (analyze + export into 2 parts)
+- [x] Split process (analyze + export into 2 parts)
+- [x] Add Remote Code Execution to run the script
+- [x] Propagate error code up

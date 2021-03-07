@@ -1,9 +1,14 @@
 """Very basic ssh client"""
 import os
+import shutil
 import subprocess
-import sys
 
 from gcpfire.logger import logger
+
+
+def check_command_exists(executable):
+    if shutil.which(executable) is None:
+        raise FileNotFoundError("ssh client is not installed?")
 
 
 def test_connection(host, keyfile, user="gcpfire"):
@@ -39,6 +44,7 @@ class RemoteExecutionError(Exception):
 
 
 def invoke_line(cmd):
+    check_command_exists(cmd[0])
     logger.debug("Running command: " + " ".join(cmd))
     ssh = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     result = ssh.stdout.readlines()
