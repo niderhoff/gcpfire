@@ -90,7 +90,18 @@ class ComputeAPI:
         result = self.compute.instances().list(project=self.project, zone=self.zone).execute()
         return result["items"] if "items" in result else None
 
-    def add_ssh_keys(self, instance):
+    def update_external_ip(self, instance):
+        logger.debug(f"Getting instance {instance.name} data.")
+        request_instance_get = (
+            self.compute.instances().get(project=self.project, zone=self.zone, instance=instance.name).execute()
+        )
+        if request_instance_get is not None:
+            logger.debug("Instance metadata:\n" + str(request_instance_get["metadata"]))
+            external_ip = request_instance_get["networkInterfaces"][0]["accessConfigs"][0]["natIP"]
+            logger.info(f"Instance {instance.name} external ip is {external_ip}")
+            instance.external_ip = external_ip
+
+    def add_ssh_keys(self, instance, username="gcpfire"):
         logger.debug(f"Getting instance {instance.name} data.")
         request_instance_get = (
             self.compute.instances().get(project=self.project, zone=self.zone, instance=instance.name).execute()
@@ -109,15 +120,15 @@ class ComputeAPI:
                     other_items.append(meta_item)
 
             logger.info("Generating keypair.")
-            priv, pub = generate_keypair()
+            priv, pub = generate_keypair(username)
             private_key_file = write_privatekey(priv, instance.name, outpath=os.path.join(os.getcwd(), "secrets"))
             logger.info(f"Private key file available at: {private_key_file}")
 
-            keys.append("gcpfire:" + pub)
+            keys.append(f"{username}:{pub}")
 
             body = {"items": [{"key": "ssh-keys", "value": "\n".join(keys)}, *other_items], "fingerprint": fingerprint}
 
-            logger.info("Adding public key to Instance (user:gcpfire)...")
+            logger.info(f"Adding public key to Instance (user:{username})...")
             request_instance_setMetadata = (
                 self.compute.instances()
                 .setMetadata(project=self.project, zone=self.zone, instance=instance.name, body=body)
@@ -145,7 +156,7 @@ class ComputeAPI:
 
         instance.delete_local_keyfile()
 
-    def fire(self, job):
+    def fire(self, job, wait=False):
         image_link = self.get_image_link(self.project, job.image_name)
 
         instance_spec = InstanceSpecBuilder(
@@ -176,9 +187,10 @@ class ComputeAPI:
         # this_job_instances = filter(lambda x: x["name"] == job.job_name, instances).map(lambda x: Instance(x["name"], self.project, self.zone))
 
         this_instance = Instance(instance_spec.name, self.project, self.zone)
+        # self.update_external_ip(this_instance)
         self.add_ssh_keys(this_instance)  # add ssh keys to instance
 
         try:
             this_instance.remote_execute_script(job.job_script_path)
         finally:
-            self.cleanup(this_instance, job.wait)
+            self.cleanup(this_instance, wait)

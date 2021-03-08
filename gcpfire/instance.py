@@ -42,11 +42,11 @@ class Instance:
 
             # Otherwise we can continue (but we can still get a ssh.RemoteExecutionError with the next commands)
             # Simple job: upload a bash file and execute it.
-            ssh.copy_file(self.external_ip, script_path, key)
+            ssh.ssh_copy_file(self.external_ip, script_path, key)
 
-            # TODO: check shebang is bash or sh
-            # TODO: use absolute path on remote
-            run_result = ssh.run_command(self.external_ip, f"bash {os.path.basename(script_path)}", key)
+            # We need full login-shell (`bash -l`) or otherwise Compute Engine login agent will not automatically grant
+            # us the access scopes from the service account and we cannot access the Container Registry
+            run_result = ssh.ssh_run_command(self.external_ip, f"bash -l {os.path.basename(script_path)}", key)
 
             return run_result
 
@@ -56,6 +56,7 @@ class Instance:
 
 class InstanceSpecBuilder:
     serial_port_enable = False
+    oslogin_enable = False
 
     def __init__(
         self, name, image_link, meta, machine_type, accelerators={}, preemptible=True, startup_script_path=None
@@ -98,6 +99,7 @@ class InstanceSpecBuilder:
 
         meta_items = [
             {"key": "serial-port-enable", "value": self.serial_port_enable},
+            {"key": "enable-oslogin", "value": self.oslogin_enable},
             *self.additional_meta,
         ]
 
@@ -127,7 +129,8 @@ class InstanceSpecBuilder:
             "disks": [
                 {
                     "boot": True,
-                    "autoDelete": True,  # TODO: boot disk 50gb kann man reducen?
+                    "autoDelete": True,
+                    "diskSizeGb": "50",
                     "initializeParams": {"sourceImage": source_disk_image},
                 }
             ],
@@ -143,10 +146,16 @@ class InstanceSpecBuilder:
             # Allow Instance to access cloud storage and logging
             "serviceAccounts": [
                 {
+                    # "email": "gcpfire-worker@main-composite-287415.iam.gserviceaccount.com",
                     "email": "default",
                     "scopes": [
                         "https://www.googleapis.com/auth/devstorage.read_write",
                         "https://www.googleapis.com/auth/logging.write",
+                        "https://www.googleapis.com/auth/datastore",
+                        "https://www.googleapis.com/auth/monitoring.write",
+                        "https://www.googleapis.com/auth/service.management.readonly",
+                        "https://www.googleapis.com/auth/servicecontrol",
+                        "https://www.googleapis.com/auth/trace.append",
                     ],
                 }
             ],

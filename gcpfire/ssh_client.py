@@ -20,7 +20,7 @@ def test_connection(host, keyfile, user="gcpfire"):
     invoke_line(cmd)
 
 
-def copy_file(host, filepath, keyfile, user="gcpfire"):
+def ssh_copy_file(host, filepath, keyfile, user="gcpfire"):
     cmd = ["scp", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
     if keyfile is not None:
         cmd.extend(["-i", keyfile])
@@ -30,10 +30,12 @@ def copy_file(host, filepath, keyfile, user="gcpfire"):
     invoke_line(cmd)
 
 
-def run_command(host, remote_cmd, keyfile, user="gcpfire"):
+def ssh_run_command(host, remote_cmd, keyfile, force_tty=True, user="gcpfire"):
     cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
     if keyfile is not None:
         cmd.extend(["-i", keyfile])
+    if force_tty:
+        cmd.append("-t")
     cmd.append(f"{user}@{host}")
     cmd.append(remote_cmd)
     invoke_line(cmd)

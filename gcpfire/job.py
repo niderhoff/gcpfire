@@ -9,7 +9,6 @@ class JobSpec:
         preemptible=True,
         additional_meta=None,
         startup_script_path=None,
-        wait=False,
     ):
         self.job_name = job_name
         self.job_script_path = job_script_path
@@ -19,4 +18,3 @@ class JobSpec:
         self.preemptible = preemptible
         self.additional_meta = additional_meta
         self.startup_script_path = startup_script_path
-        self.wait = wait
