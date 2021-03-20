@@ -1,0 +1,24 @@
+default:
+  image: python:3.8
+
+cache:
+  key: "project-${CI_JOB_NAME}"
+  paths:
+    - .cache/pip
+    - .venv
+
+stages:
+  - publish
+
+setup:
+  stage: .pre
+  script:
+    - pip install poetry
+    - poetry config virtualenvs.in-project true
+
+publish:
+  stage: publish
+  script:
+    - poetry install -vv
+    - poetry build
+    - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --repository-url https://gitlab.example.com/api/v4/projects/${CI_PROJECT_ID}/packages/pypi dist/*
