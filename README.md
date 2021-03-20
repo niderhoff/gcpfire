@@ -2,8 +2,8 @@
 
 ## Next Steps
 
+- [ ] Reduce Docker Image download time by having some version of the docker images that is semi-recent baked into the image.
 - [ ] Use optional git pull & default image instead of Docker to reduce runtime.
-- [ ] Make this a package
 - [ ] PIPE SSH Key
 - [ ] Add Profiling
 - [ ] Run Multiple Jobs in Succession
@@ -14,6 +14,7 @@
 
 ### 0.1.1
 
+- [x] Make this a package (so we can import it on other packages)
 - [x] Add Exporter Task
 - [x] Docker uses GPU now
 - [x] Analysis Task is now working.
