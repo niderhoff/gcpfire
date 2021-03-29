@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from gcpfire import ssh_client as ssh
 from gcpfire.keys import delete_key_file
 from gcpfire.logger import logger
 
-"""Define a new Instance Spec"""
-
 
 class Instance:
-    external_ip: Union[str, None] = None
-    private_key_file: Union[str, None] = None
+    """Define a new Instance."""
 
-    def __init__(self, name: str, project: str, zone: str):
+    external_ip: Optional[str] = None
+    private_key_file: Optional[str] = None
+
+    def __init__(self, name: str, project: str, zone: str) -> None:
         self.name = name
         self.project = project
         self.zone = zone
@@ -36,48 +36,57 @@ class Instance:
 
         Raises:
             ValueError: path to private key file is empty.
-            ssh.RemoteExecutionError: If the #retries is exhausted and ssh does not give exitcode 0, we propagate the error.
+            RemoteExecutionError: Raised if execution failed after #retries. Attaches stderr.
 
         Returns:
             List[bytes]: Stdout (if any). Will be empty for ssh copy.
         """
         assert self.external_ip is not None
 
+        if script_path is None:
+            raise ValueError("No script is given: prohibiting trivial remote code execution.")
+
         key = self.private_key_file
         if key is None:
-            raise ValueError("We need to add a ssh-keys to the Instance before we can execute code.")
+            raise ValueError("Need to add a ssh-keys to the Instance before code can be executed.")
 
         # Because we reuse an IP for different instances we have to remove it from ~/.ssh/known_hosts.
         # However, we have to manually remove it because openssh does not allow us to disable KnownHostsFile anymore.
-        ssh.remove_host(self.external_ip)
+        ssh.remove_from_known_hosts(self.external_ip)
 
         # For some reason the connection does not work on the first try. Maybe because google only adds the key to
         # authorized_keys during the first connection attempt. So we just keep probing the connection a couple times.
-        tries = 0
-        while tries < max_retry:
+        for _ in range(max_retry):
             try:
+                # Test connection to trigger a retry if the ssh key is not ready on the remote.
                 ssh.test_connection(self.external_ip, key)
-            except ssh.RemoteExecutionError:
-                # skip to next try if the probing didn't work
-                tries += 1
+
+                # Otherwise we can continue (but we can still get a ssh.RemoteExecutionError with the next commands)
+                # Ok it worked, we can now upload a bash file and execute it.
+                ssh.ssh_copy_file(self.external_ip, script_path, key)
+
+                # We need full login-shell (`bash -l`) or otherwise Compute Engine login agent will not automatically grant
+                # us the access scopes from the service account and we cannot access the Container Registry
+                return ssh.ssh_run_command(self.external_ip, f"bash -l {os.path.basename(script_path)}", key)
+            except ssh.ShellExecutionError as e:
+                err = e
+                # if we had an error we will wait and skip ahead to next iteration
                 time.sleep(retry_wait)
                 continue
+        else:  # loop did not exit early (no break) --> we exhausted our # of tries and will propagate stderr
+            raise RemoteExecutionError(err.message, err.stderror)
 
-            # Otherwise we can continue (but we can still get a ssh.RemoteExecutionError with the next commands)
-            # Simple job: upload a bash file and execute it.
-            ssh.ssh_copy_file(self.external_ip, script_path, key)
 
-            # We need full login-shell (`bash -l`) or otherwise Compute Engine login agent will not automatically grant
-            # us the access scopes from the service account and we cannot access the Container Registry
-            run_result = ssh.ssh_run_command(self.external_ip, f"bash -l {os.path.basename(script_path)}", key)
-
-            return run_result
-
-        # we achieved our max # of tries so throw RemoteExecutionError
-        raise ssh.RemoteExecutionError
+class RemoteExecutionError(ssh.ShellExecutionError):
+    """Indicates an Exception during remote code execution. Option to attach stderror byte buffer."""
 
 
 class InstanceSpecBuilder:
+    """We use a builder pattern, because we want to have an Instance template we can apply to several ZONES
+    simultaneously. So we have to finalize the spec right before creation of the instance, depending of the zone the
+    compute api instance is attached to.
+    """
+
     serial_port_enable = False
     oslogin_enable = False
 
@@ -90,7 +99,7 @@ class InstanceSpecBuilder:
         accelerators: Dict[str, int] = {},
         preemptible: bool = True,
         startup_script_path: Optional[str] = None,
-    ):
+    ) -> None:
         self.name = name
         self.additional_meta = additional_meta
         self.image_link = image_link
@@ -100,7 +109,7 @@ class InstanceSpecBuilder:
         self.startup_script_path = startup_script_path
 
     def build(self, project: str, zone: str) -> InstanceSpecBuilder:
-        """create instance with <name> and access to a certain gs <bucket>"""
+        """Finalizes the spec with PROJECT and ZONE information and builds the config."""
         logger.debug(
             (
                 f"Creating Instance {self.name} with machine_type={self.machine_type}, preemptible={self.preemptible}, "

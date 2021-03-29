@@ -23,9 +23,7 @@ output_uri = "gs://dev-video-exported/test/10_Hegenberger_vs_Ehret/10_Hegenberge
 
 def analysis_task() -> None:
     """Analysis: Extract Frames & classify rallies"""
-    analysis_job_name = (
-        f"analysis-{str(time.time()).split('.')[0]}"  # TODO: this can DEFINITELY break when we parallelize
-    )
+    analysis_job_name = f"analysis-{str(time.time()).split('.')[0]}"
     analysis_script_path = os.path.join(
         os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)),
         "jobs",
@@ -46,12 +44,13 @@ def analysis_task() -> None:
     # Define type & number of GPUs for EACH machine
     gpus = {"nvidia-tesla-t4": 1}
     machine_type = "n1-standard-4"
-    image_name = "liimba-tesla"  # TODO: enable global images (currently limited to images from OUR project)
+    image_name = "liimba-tesla"
 
     compute_api = ComputeAPI(PROJECT_ID, ZONE)
     job = JobSpec(analysis_job_name, analysis_script_path, image_name, machine_type, gpus, PREEMPTIBLE, analysis_meta)
 
-    compute_api.fire(job, wait=True)
+    stdout = compute_api.fire(job, wait=True)
+    logger.info(b"".join(stdout).decode("utf-8"))
 
 
 def exporter_task() -> None:
@@ -79,12 +78,13 @@ def exporter_task() -> None:
     ]
     gpus = {"nvidia-tesla-t4": 1}
     machine_type = "n1-standard-4"
-    image_name = "liimba-tesla"  # TODO: enable global images (currently limited to images from OUR project)
+    image_name = "liimba-tesla"
 
     compute_api = ComputeAPI(PROJECT_ID, ZONE)
     job = JobSpec(exporter_job_name, exporter_script_path, image_name, machine_type, gpus, PREEMPTIBLE, exporter_meta)
 
-    compute_api.fire(job, wait=True)
+    stdout = compute_api.fire(job, wait=True)
+    logger.info(b"".join(stdout).decode("utf-8"))
 
 
 if __name__ == "__main__":

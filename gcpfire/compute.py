@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any
+from typing import Any, List
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import Resource, build
@@ -17,24 +17,6 @@ SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 HARD_LIMIT_MAX_INSTANCES = 10
 
 
-class InstanceNotExistsError(Exception):
-    """Requested instance does not exist according to GCP API."""
-
-    pass
-
-
-class TooManyInstancesError(Exception):
-    """More instances are running than we have allowed for this Project"""
-
-    pass
-
-
-class NoInstancesError(Exception):
-    """We have created an instances but GCP reports no instances. This is a FATAL errror and should not happen."""
-
-    pass
-
-
 def get_credentials() -> service_account.Credentials:
     return service_account.Credentials.from_service_account_file(
         SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/compute"]
@@ -45,12 +27,6 @@ def get_compute_client() -> Resource:
     logger.debug("Building Compute Client.")
     credentials = get_credentials()
     return build("compute", "v1", credentials=credentials, cache_discovery=False)
-
-
-def get_logging_client() -> Resource:
-    logger.debug("Building Logging Client.")
-    credentials = get_credentials()
-    return build("logging", "v2", credentials=credentials, cache_discovery=False)
 
 
 class ComputeAPI:
@@ -65,15 +41,16 @@ class ComputeAPI:
         self.compute = get_compute_client()
 
     def get_image_link(self, project: str, family: str) -> Any:
+        # TODO: enable global images (currently limited to images from OUR project)
         # Get the latest image
         logger.debug(f"Getting image {family} from project {project}")
         image_response = self.compute.images().getFromFamily(project=project, family=family).execute()
         logger.debug(f"Got {image_response['selfLink']}")
         return image_response["selfLink"]
 
-    def create_instance(self, instance_spec_builder: InstanceSpecBuilder) -> Any:
-        logger.info(f"Creating Instance {instance_spec_builder.name}.")
-        instance_spec = instance_spec_builder.build(self.project, self.zone)
+    def create_instance(self, builder: InstanceSpecBuilder) -> Any:
+        logger.info(f"Creating Instance {builder.name}.")
+        instance_spec = builder.build(self.project, self.zone)
         request = (
             self.compute.instances().insert(project=self.project, zone=self.zone, body=instance_spec.config).execute()
         )
@@ -165,10 +142,10 @@ class ComputeAPI:
 
         instance.delete_local_keyfile()
 
-    def fire(self, job: JobSpec, wait: bool = False, retry_wait: int = 5, max_retry: int = 5) -> None:
+    def fire(self, job: JobSpec, wait: bool = False, retry_wait: int = 5, max_retry: int = 5) -> List[bytes]:
         image_link = self.get_image_link(self.project, job.image_name)
 
-        instance_spec = InstanceSpecBuilder(
+        builder = InstanceSpecBuilder(
             job.job_name,
             image_link,
             job.additional_meta,
@@ -182,7 +159,10 @@ class ComputeAPI:
         if instances is not None and len(instances) > HARD_LIMIT_MAX_INSTANCES:
             raise TooManyInstancesError
 
-        self.create_instance(instance_spec)
+        # we could return the instance right here, but for now we will populate the instances directly from the API
+        # so we know it really exists. As of now, there is no real benefit of tracking instance states also in gcpfire
+        # because we will throw away the instance anyway after executing the next few lines of code.
+        self.create_instance(builder)
 
         instances = self.list_instances()
         if instances is not None:
@@ -192,16 +172,33 @@ class ComputeAPI:
         else:
             raise NoInstancesError
 
-        # TODO: save state & populate instances
-        # this_job_instances = filter(lambda x: x["name"] == job.job_name, instances).map(lambda x: Instance(x["name"], self.project, self.zone))
-
-        this_instance = Instance(instance_spec.name, self.project, self.zone)
+        this_instance = Instance(builder.name, self.project, self.zone)
         # self.update_external_ip(this_instance)
         self.add_ssh_keys(this_instance)  # add ssh keys to instance
 
         try:
-            this_instance.remote_execute_script(
+            return this_instance.remote_execute_script(
                 script_path=job.job_script_path, retry_wait=retry_wait, max_retry=max_retry
             )
+        except Exception as e:
+            raise e  # capture all errors and re-raise, so we can guarantee the finally is executed no matter which exception happens
         finally:
             self.cleanup(this_instance, wait)
+
+
+class InstanceNotExistsError(Exception):
+    """Requested instance does not exist according to GCP API."""
+
+    pass
+
+
+class TooManyInstancesError(Exception):
+    """More instances are running than we have allowed for this Project"""
+
+    pass
+
+
+class NoInstancesError(Exception):
+    """We have created an instances but GCP reports no instances. This is a FATAL errror and should not happen."""
+
+    pass

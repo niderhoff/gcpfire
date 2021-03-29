@@ -2,7 +2,6 @@
 
 ## Next Steps
 
-- [ ] Expose Docker Container stdout
 - [ ] Reduce Docker Image download time by having some version of the docker images that is semi-recent baked into the image.
 - [ ] Use optional git pull & default image instead of Docker to reduce runtime.
 - [ ] PIPE SSH Key
@@ -13,9 +12,14 @@
 
 ## Changelog
 
-### 0.1.2
+### 0.2.1
+
+- [x] Better error handling and propagation of stdout/stderr.
+
+### 0.2.0
 
 - [x] Add Type hints
+- [x] Minor improvements
 
 ### 0.1.1
 

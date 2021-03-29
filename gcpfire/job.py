@@ -4,6 +4,8 @@ from typing import Any, Dict, List, Optional
 
 @dataclass
 class JobSpec:
+    """The externally accessible abstraction for Jobs we execute on GCP."""
+
     job_name: str
     job_script_path: str
     image_name: str
