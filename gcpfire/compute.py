@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import time
 from typing import Any
@@ -8,6 +10,8 @@ from googleapiclient.discovery import Resource, build
 from gcpfire.instance import Instance, InstanceSpecBuilder
 from gcpfire.keys import generate_keypair, write_privatekey
 from gcpfire.logger import logger
+
+from .job import JobSpec
 
 SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 HARD_LIMIT_MAX_INSTANCES = 10
@@ -50,6 +54,10 @@ def get_logging_client() -> Resource:
 
 
 class ComputeAPI:
+    project: str
+    zone: str
+    compute: Resource
+
     def __init__(self, project: str, zone: str) -> None:
         logger.info("Creating Compute API Instance.")
         self.project = project
@@ -72,7 +80,7 @@ class ComputeAPI:
         result = self.wait_for_response(request["name"])
         return result
 
-    def wait_for_response(self, operation) -> Any:
+    def wait_for_response(self, operation: Any) -> Any:
         logger.info("Waiting for operation to finish...")
         while True:
             result = (
@@ -87,11 +95,11 @@ class ComputeAPI:
 
             time.sleep(1)
 
-    def list_instances(self):
+    def list_instances(self) -> Any:
         result = self.compute.instances().list(project=self.project, zone=self.zone).execute()
         return result["items"] if "items" in result else None
 
-    def update_external_ip(self, instance):
+    def update_external_ip(self, instance: Instance) -> None:
         logger.debug(f"Getting instance {instance.name} data.")
         request_instance_get = (
             self.compute.instances().get(project=self.project, zone=self.zone, instance=instance.name).execute()
@@ -102,7 +110,7 @@ class ComputeAPI:
             logger.info(f"Instance {instance.name} external ip is {external_ip}")
             instance.external_ip = external_ip
 
-    def add_ssh_keys(self, instance, username="gcpfire"):
+    def add_ssh_keys(self, instance: Instance, username: str = "gcpfire") -> None:
         logger.debug(f"Getting instance {instance.name} data.")
         request_instance_get = (
             self.compute.instances().get(project=self.project, zone=self.zone, instance=instance.name).execute()
@@ -125,7 +133,7 @@ class ComputeAPI:
             private_key_file = write_privatekey(priv, instance.name, outpath=os.path.join(os.getcwd(), "secrets"))
             logger.info(f"Private key file available at: {private_key_file}")
 
-            keys.append(f"{username}:{pub}")
+            keys.append(f"{username}:{pub.decode()}")
 
             body = {"items": [{"key": "ssh-keys", "value": "\n".join(keys)}, *other_items], "fingerprint": fingerprint}
 
@@ -145,11 +153,11 @@ class ComputeAPI:
             logger.error(f"Instance {instance.name} does not exist.")
             raise InstanceNotExistsError
 
-    def delete_instance(self, instance):
+    def delete_instance(self, instance: Instance) -> Any:
         logger.info(f"Deleting Instance {instance.name}")
         return self.compute.instances().delete(project=self.project, zone=self.zone, instance=instance.name).execute()
 
-    def cleanup(self, instance, wait):
+    def cleanup(self, instance: Instance, wait: bool) -> None:
         if wait:
             input(f"DELETE instance {instance.name}? [Enter]")
         request = self.delete_instance(instance)
@@ -157,7 +165,7 @@ class ComputeAPI:
 
         instance.delete_local_keyfile()
 
-    def fire(self, job, wait=False, retry_wait=5, max_retry=5):
+    def fire(self, job: JobSpec, wait: bool = False, retry_wait: int = 5, max_retry: int = 5) -> None:
         image_link = self.get_image_link(self.project, job.image_name)
 
         instance_spec = InstanceSpecBuilder(

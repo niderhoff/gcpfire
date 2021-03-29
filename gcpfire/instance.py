@@ -12,8 +12,8 @@ from gcpfire.logger import logger
 
 
 class Instance:
-    external_ip = None
-    private_key_file = None
+    external_ip: Union[str, None] = None
+    private_key_file: Union[str, None] = None
 
     def __init__(self, name: str, project: str, zone: str):
         self.name = name
@@ -25,12 +25,27 @@ class Instance:
             delete_key_file(self.private_key_file)
             self.private_key_file = None
 
-    def remote_execute_script(
-        self, script_path: str, retry_wait: int = 5, max_retry: int = 5
-    ) -> Union[List[bytes], int]:
+    def remote_execute_script(self, script_path: str, retry_wait: int = 5, max_retry: int = 5) -> List[bytes]:
+        """Remotely execute code over SSH. Raises Exception if SSH command failed, otherwise returns the stdout or an
+           empty list.
+
+        Args:
+            script_path (str): path to a bash script we want to remotely execute.
+            retry_wait (int, optional): Seconds to wait between retries. Defaults to 5.
+            max_retry (int, optional): Retry ssh commands if they fail. Defaults to 5.
+
+        Raises:
+            ValueError: path to private key file is empty.
+            ssh.RemoteExecutionError: If the #retries is exhausted and ssh does not give exitcode 0, we propagate the error.
+
+        Returns:
+            List[bytes]: Stdout (if any). Will be empty for ssh copy.
+        """
         assert self.external_ip is not None
 
         key = self.private_key_file
+        if key is None:
+            raise ValueError("We need to add a ssh-keys to the Instance before we can execute code.")
 
         # Because we reuse an IP for different instances we have to remove it from ~/.ssh/known_hosts.
         # However, we have to manually remove it because openssh does not allow us to disable KnownHostsFile anymore.
@@ -58,7 +73,7 @@ class Instance:
 
             return run_result
 
-        # we achieved our max # of tries
+        # we achieved our max # of tries so throw RemoteExecutionError
         raise ssh.RemoteExecutionError
 
 
@@ -70,14 +85,14 @@ class InstanceSpecBuilder:
         self,
         name: str,
         image_link: str,
-        meta: Dict[str, Any],
+        additional_meta: List[Dict[str, Any]],
         machine_type: str,
         accelerators: Dict[str, int] = {},
         preemptible: bool = True,
         startup_script_path: Optional[str] = None,
     ):
         self.name = name
-        self.additional_meta = meta
+        self.additional_meta = additional_meta
         self.image_link = image_link
         self.machine_type = machine_type
         self.gpus = accelerators

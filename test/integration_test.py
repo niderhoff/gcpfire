@@ -21,7 +21,7 @@ rallies_uri = "gs://dev-video-input/analyzed/10_Hegenberger_vs_Ehret/10_Hegenber
 output_uri = "gs://dev-video-exported/test/10_Hegenberger_vs_Ehret/10_Hegenberger_vs_Ehret.mp4"
 
 
-def analysis_task():
+def analysis_task() -> None:
     """Analysis: Extract Frames & classify rallies"""
     analysis_job_name = (
         f"analysis-{str(time.time()).split('.')[0]}"  # TODO: this can DEFINITELY break when we parallelize
@@ -54,7 +54,7 @@ def analysis_task():
     compute_api.fire(job, wait=True)
 
 
-def exporter_task():
+def exporter_task() -> None:
     """Exporter: Use rallies csv to cut & export video"""
     exporter_job_name = f"exporter-{str(time.time()).split('.')[0]}"
     exporter_script_path = os.path.join(

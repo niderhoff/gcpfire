@@ -9,9 +9,13 @@
 - [ ] Add Profiling
 - [ ] Run Multiple Jobs in Succession
 - [ ] Parallelize & Proper parallelized logging
-- [ ] Add Type hints
+- [ ] Get rid of "Any" type hints from Google API
 
 ## Changelog
+
+### 0.1.2
+
+- [x] Add Type hints
 
 ### 0.1.1
 
