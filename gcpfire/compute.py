@@ -67,8 +67,15 @@ class ComputeAPI:
             if result["status"] == "DONE":
                 logger.info("done.")
                 if "error" in result:
-                    raise Exception(result["error"])
-                return result
+                    errors = result["error"]["errors"]  # nice google!
+                    if len(errors) == 1 and errors[0]["code"] == "ZONE_RESOURCE_POOL_EXHAUSTED":
+                        raise NoResourcesError(errors[0]["message"])  # try to map error
+                    elif len(errors) == 1:
+                        raise Exception(errors[0]["message"])  # it's unknown so we raise a generic error
+                    else:
+                        raise Exception(result["error"])  # multiple errors(?)
+                else:
+                    return result
 
             time.sleep(1)
 
@@ -200,5 +207,11 @@ class TooManyInstancesError(Exception):
 
 class NoInstancesError(Exception):
     """We have created an instances but GCP reports no instances. This is a FATAL errror and should not happen."""
+
+    pass
+
+
+class NoResourcesError(Exception):
+    """Raised when GCP has no Resources to fulfil our request."""
 
     pass
