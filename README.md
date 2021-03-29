@@ -2,6 +2,7 @@
 
 ## Next Steps
 
+- [ ] Expose Docker Container stdout
 - [ ] Reduce Docker Image download time by having some version of the docker images that is semi-recent baked into the image.
 - [ ] Use optional git pull & default image instead of Docker to reduce runtime.
 - [ ] PIPE SSH Key

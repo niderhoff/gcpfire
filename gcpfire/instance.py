@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import os
 import time
+from typing import Any, Dict, List, Optional, Union
 
 from gcpfire import ssh_client as ssh
 from gcpfire.keys import delete_key_file
@@ -12,16 +15,21 @@ class Instance:
     external_ip = None
     private_key_file = None
 
-    def __init__(self, name, project, zone):
+    def __init__(self, name: str, project: str, zone: str):
         self.name = name
         self.project = project
         self.zone = zone
 
-    def delete_local_keyfile(self):
-        delete_key_file(self.private_key_file)
-        self.private_key_file = None
+    def delete_local_keyfile(self) -> None:
+        if self.private_key_file is not None:
+            delete_key_file(self.private_key_file)
+            self.private_key_file = None
 
-    def remote_execute_script(self, script_path):
+    def remote_execute_script(
+        self, script_path: str, retry_wait: int = 5, max_retry: int = 5
+    ) -> Union[List[bytes], int]:
+        assert self.external_ip is not None
+
         key = self.private_key_file
 
         # Because we reuse an IP for different instances we have to remove it from ~/.ssh/known_hosts.
@@ -31,13 +39,13 @@ class Instance:
         # For some reason the connection does not work on the first try. Maybe because google only adds the key to
         # authorized_keys during the first connection attempt. So we just keep probing the connection a couple times.
         tries = 0
-        while tries < 5:
+        while tries < max_retry:
             try:
                 ssh.test_connection(self.external_ip, key)
             except ssh.RemoteExecutionError:
                 # skip to next try if the probing didn't work
                 tries += 1
-                time.sleep(5)
+                time.sleep(retry_wait)
                 continue
 
             # Otherwise we can continue (but we can still get a ssh.RemoteExecutionError with the next commands)
@@ -59,7 +67,14 @@ class InstanceSpecBuilder:
     oslogin_enable = False
 
     def __init__(
-        self, name, image_link, meta, machine_type, accelerators={}, preemptible=True, startup_script_path=None
+        self,
+        name: str,
+        image_link: str,
+        meta: Dict[str, Any],
+        machine_type: str,
+        accelerators: Dict[str, int] = {},
+        preemptible: bool = True,
+        startup_script_path: Optional[str] = None,
     ):
         self.name = name
         self.additional_meta = meta
@@ -69,7 +84,7 @@ class InstanceSpecBuilder:
         self.preemptible = preemptible
         self.startup_script_path = startup_script_path
 
-    def build(self, project, zone):
+    def build(self, project: str, zone: str) -> InstanceSpecBuilder:
         """create instance with <name> and access to a certain gs <bucket>"""
         logger.debug(
             (

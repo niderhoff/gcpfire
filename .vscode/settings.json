@@ -7,6 +7,7 @@
     },
     "python.linting.flake8Enabled": true,
     "python.linting.enabled": true,
+    "python.linting.mypyEnabled": true,
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
         "source.organizeImports": true
@@ -19,5 +20,11 @@
     "python.testing.pytestArgs": [
         "-vv",
         "test"
-    ]
+    ],
+    "python.linting.mypyArgs": [
+        "--ignore-missing-imports",
+        "--follow-imports=silent",
+        "--show-column-numbers",
+        "--strict"
+    ],
 }

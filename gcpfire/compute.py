@@ -1,8 +1,9 @@
 import os
 import time
+from typing import Any
 
 from google.oauth2 import service_account
-from googleapiclient.discovery import build
+from googleapiclient.discovery import Resource, build
 
 from gcpfire.instance import Instance, InstanceSpecBuilder
 from gcpfire.keys import generate_keypair, write_privatekey
@@ -30,48 +31,48 @@ class NoInstancesError(Exception):
     pass
 
 
-def get_credentials():
+def get_credentials() -> service_account.Credentials:
     return service_account.Credentials.from_service_account_file(
         SERVICE_ACCOUNT_FILE, scopes=["https://www.googleapis.com/auth/compute"]
     )
 
 
-def get_compute_client():
+def get_compute_client() -> Resource:
     logger.debug("Building Compute Client.")
     credentials = get_credentials()
     return build("compute", "v1", credentials=credentials, cache_discovery=False)
 
 
-def get_logging_client():
+def get_logging_client() -> Resource:
     logger.debug("Building Logging Client.")
     credentials = get_credentials()
     return build("logging", "v2", credentials=credentials, cache_discovery=False)
 
 
 class ComputeAPI:
-    def __init__(self, project, zone):
+    def __init__(self, project: str, zone: str) -> None:
         logger.info("Creating Compute API Instance.")
         self.project = project
         self.zone = zone
         self.compute = get_compute_client()
 
-    def get_image_link(self, project, family):
+    def get_image_link(self, project: str, family: str) -> Any:
         # Get the latest image
         logger.debug(f"Getting image {family} from project {project}")
         image_response = self.compute.images().getFromFamily(project=project, family=family).execute()
         logger.debug(f"Got {image_response['selfLink']}")
         return image_response["selfLink"]
 
-    def create_instance(self, instance_builder):
-        logger.info(f"Creating Instance {instance_builder.name}.")
-        instance_spec = instance_builder.build(self.project, self.zone)
+    def create_instance(self, instance_spec_builder: InstanceSpecBuilder) -> Any:
+        logger.info(f"Creating Instance {instance_spec_builder.name}.")
+        instance_spec = instance_spec_builder.build(self.project, self.zone)
         request = (
             self.compute.instances().insert(project=self.project, zone=self.zone, body=instance_spec.config).execute()
         )
         result = self.wait_for_response(request["name"])
         return result
 
-    def wait_for_response(self, operation):
+    def wait_for_response(self, operation) -> Any:
         logger.info("Waiting for operation to finish...")
         while True:
             result = (
@@ -156,7 +157,7 @@ class ComputeAPI:
 
         instance.delete_local_keyfile()
 
-    def fire(self, job, wait=False):
+    def fire(self, job, wait=False, retry_wait=5, max_retry=5):
         image_link = self.get_image_link(self.project, job.image_name)
 
         instance_spec = InstanceSpecBuilder(
@@ -191,6 +192,8 @@ class ComputeAPI:
         self.add_ssh_keys(this_instance)  # add ssh keys to instance
 
         try:
-            this_instance.remote_execute_script(job.job_script_path)
+            this_instance.remote_execute_script(
+                script_path=job.job_script_path, retry_wait=retry_wait, max_retry=max_retry
+            )
         finally:
             self.cleanup(this_instance, wait)

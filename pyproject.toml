@@ -16,6 +16,7 @@ google-auth = "^1.27.0"
 google-auth-oauthlib = "^0.4.2"
 google-auth-httplib2 = "^0.0.4"
 cryptography = "^3.4.6"
+mypy = "^0.812"
 
 [tool.poetry.dev-dependencies]
 black = "^20.8b1"
