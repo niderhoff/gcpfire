@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "gcpfire"
-version = "0.1.1"
+version = "0.2.0"
 description = "Fire jobs on GCP Compute Engine Preemptible VM Instances"
 authors = ["Nicolas Iderhoff <hello@niid.xyz>"]
 license = "MIT"
